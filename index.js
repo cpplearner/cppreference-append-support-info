@@ -1,3 +1,13 @@
+// ==UserScript==
+// @name         Cppreference-append-support-info
+// @version      1.0
+// @description  Append support information to cppreference pages
+// @author       cpp_learner
+// @match        https://en.cppreference.com/w/*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=cppreference.com
+// @grant        none
+// ==/UserScript==
+
 async function fetch_pages(pagenames) {
     const params = new URLSearchParams({
         format: 'json',
