@@ -24,7 +24,7 @@ async function fetch_pages(pagenames) {
 
 function is_relevant_row(row) {
     const links = Array.from(row.querySelectorAll('a'));
-    return links.some(a => document.URL.startsWith(a.href));
+    return links.some(a => `${document.URL}/`.startsWith(`${a.href}/`));
 }
 
 function get_relevant_rows(content, selector) {
@@ -48,7 +48,7 @@ function fixup_missing_columns(dst_data, src_data) {
         const src_cell = src_head_cells[i];
         const src_cell_in_dst_head = dst_head_cells.some(dst_cell => are_matching_cells(dst_cell, src_cell));
         if (!src_cell_in_dst_head) {
-            dst_data.head.insertBefore(src_cell, dst_head_cells[i]);
+            dst_data.head.insertBefore(src_cell.cloneNode(true), dst_head_cells[i]);
             for (const row of dst_data.body) {
                 const cell = row.insertCell(i);
                 cell.classList.add('table-na');
