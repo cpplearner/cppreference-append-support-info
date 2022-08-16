@@ -8,6 +8,7 @@
 // @grant        none
 // ==/UserScript==
 
+(function() {
 async function fetch_pages(pagenames) {
     const params = new URLSearchParams({
         format: 'json',
@@ -47,7 +48,7 @@ function fixup_missing_columns(dst_data, src_data) {
         const src_cell = src_head_cells[i];
         const src_cell_in_dst_head = dst_head_cells.some(dst_cell => are_matching_cells(dst_cell, src_cell));
         if (!src_cell_in_dst_head) {
-            dst_data.head.insertBefore(src_cell.cloneNode(true), dst_head_cells[i]);
+            dst_data.head.insertBefore(src_cell, dst_head_cells[i]);
             for (const row of dst_data.body) {
                 const cell = row.insertCell(i);
                 cell.classList.add('table-na');
@@ -61,10 +62,11 @@ function fixup_missing_columns(dst_data, src_data) {
 }
 
 function merge_support_data(old_data, new_data) {
-    if (!new_data.head) {
+    if (!new_data.head || new_data.body.length === 0) {
         return;
     } else if (!old_data.head) {
         old_data.head = new_data.head;
+        old_data.body = new_data.body;
     } else {
         fixup_missing_columns(old_data, new_data);
         fixup_missing_columns(new_data, old_data);
@@ -108,3 +110,4 @@ const is_cxx = !document.URL.match(/\bc\//);
 const lang = is_cxx ? 'cpp' : 'c';
 const revs = is_cxx ? ['11', '14', '17', '20', '23', '26'] : ['99', '23'];
 append_support_table(lang, revs);
+})();
