@@ -24,7 +24,14 @@ async function fetch_pages(pagenames) {
 
 function is_relevant_row(row) {
     const links = Array.from(row.querySelectorAll('a'));
-    return links.some(a => `${document.URL}/`.startsWith(`${a.href}/`));
+    if (links.some(a => `${document.URL}/`.startsWith(`${a.href}/`))) {
+        return true;
+    }
+    const header = document.querySelector('.t-dcl-begin .t-dsc-header a');
+    if (header && links.some(a => a.href === header.href)) {
+        return true;
+    }
+    return false;
 }
 
 function get_relevant_rows(content, selector) {
