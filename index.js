@@ -19,7 +19,31 @@ async function fetch_pages(pagenames) {
         titles: pagenames.join('|'),
     });
     const apiresult = await fetch('/mwiki/api.php?' + params.toString()).then(r => r.json());
-    return Object.values(apiresult.query.pages).map(page => page.revisions[0]['*']);
+    return Object.values(apiresult.query.pages);
+}
+
+function get_revision_marker_in_page() {
+    const marker = Array.from(document.querySelectorAll('#firstHeading > .t-mark-rev'));
+    if (marker.length !== 0) {
+        return marker;
+    }
+    const dcl = Array.from(document.querySelectorAll('.t-dcl-begin:not(h3 ~ *, .t-member *)'));
+    return dcl.flatMap(elem => Array.from(elem.querySelectorAll('.t-dcl-rev-notes, .t-dcl:not(.t-dcl-rev-notes *)')));
+}
+
+function guess_relevant_revs(lang, revs) {
+    const marker = get_revision_marker_in_page();
+
+    var since = undefined, until = revs.length;
+    for (const [i, rev] of revs.entries()) {
+        if (marker.some(elem => elem.classList.contains(`t-since-${lang}${rev}`))) {
+            since = since ?? i;
+        }
+        if (marker.some(elem => elem.classList.contains(`t-until-${lang}${rev}`))) {
+            until = i;
+        }
+    }
+    return revs.slice(since, until);
 }
 
 function is_relevant_row(row) {
@@ -97,13 +121,21 @@ function create_support_table(data) {
     return table;
 }
 
-async function append_support_table(lang, revs) {
-    const pagenames = revs.map(rev => `Template:${lang}/compiler support/${rev}`);
-    const pages = await fetch_pages(pagenames);
+async function append_support_table(is_cxx, revs) {
+    const get_pagename = rev => `Template:${is_cxx ? 'cpp' : 'c'}/compiler support/${rev}`;
+
+    const pages = await fetch_pages(revs.map(get_pagename));
+
     const compiler_support = {body: []};
     const library_support = {body: []};
-    for (const page of pages) {
-        const content = new DOMParser().parseFromString(page, 'text/html');
+
+    const relevant_revs = guess_relevant_revs(is_cxx ? 'cxx' : 'c', revs);
+    const relevant_pagenames = relevant_revs.map(get_pagename);
+
+    const relevant_pages = pages.filter(page => relevant_pagenames.includes(page.title));
+
+    for (const page of relevant_pages) {
+        const content = new DOMParser().parseFromString(page.revisions[0]['*'], 'text/html');
         merge_support_data(compiler_support, get_relevant_rows(content, '.t-compiler-support-top'));
         merge_support_data(library_support, get_relevant_rows(content, '.t-standard-library-support-top'));
     }
@@ -114,7 +146,6 @@ async function append_support_table(lang, revs) {
 }
 
 const is_cxx = !document.URL.match(/\bc\//);
-const lang = is_cxx ? 'cpp' : 'c';
 const revs = is_cxx ? ['11', '14', '17', '20', '23', '26'] : ['99', '23'];
-append_support_table(lang, revs);
+append_support_table(is_cxx, revs);
 })();
