@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Cppreference-append-support-info
-// @version      1.0
+// @version      1.1
 // @description  Append support information to cppreference pages
 // @author       cpp_learner
 // @match        https://en.cppreference.com/w/*
@@ -23,27 +23,36 @@ async function fetch_pages(pagenames) {
 }
 
 function get_revision_marker_in_page() {
-    const marker = Array.from(document.querySelectorAll('#firstHeading > .t-mark-rev'));
-    if (marker.length !== 0) {
-        return marker;
+    const marker = document.querySelector('#firstHeading > .t-mark-rev');
+    if (marker !== null) {
+        return [new Set(marker.classList)];
     }
     const dcl = Array.from(document.querySelectorAll('.t-dcl-begin:not(h3 ~ *, .t-member *)'));
-    return dcl.flatMap(elem => Array.from(elem.querySelectorAll('.t-dcl-rev-notes, .t-dcl:not(.t-dcl-rev-notes *)')));
+    const elems = dcl.flatMap(elem => Array.from(elem.querySelectorAll('.t-dcl-rev-notes, .t-dcl:not(.t-dcl-rev-notes *)')));
+    return elems.map(elem => new Set(elem.classList));
 }
 
 function guess_relevant_revs(lang, revs) {
-    const marker = get_revision_marker_in_page();
+    const markers_class_sets = get_revision_marker_in_page();
 
-    var since = undefined, until = revs.length;
-    for (const [i, rev] of revs.entries()) {
-        if (marker.some(elem => elem.classList.contains(`t-since-${lang}${rev}`))) {
-            since = since ?? i;
+    var since = revs.length, until = 0;
+    for (const class_set of markers_class_sets) {
+        var has_since = false;
+        var has_until = false;
+        for (const [i, rev] of revs.entries()) {
+            if (class_set.has(`t-since-${lang}${rev}`)) {
+                has_since = true;
+                since = Math.min(since, i);
+            }
+            if (class_set.has(`t-until-${lang}${rev}`)) {
+                has_until = true;
+                until = Math.max(until, i);
+            }
         }
-        if (marker.some(elem => elem.classList.contains(`t-until-${lang}${rev}`))) {
-            until = i;
-        }
+        since = has_since ? since : 0;
+        until = has_until ? until : revs.length;
     }
-    return revs.slice(since, until);
+    return revs.slice(since, until + 1);
 }
 
 function is_relevant_row(row) {
