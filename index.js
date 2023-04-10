@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Cppreference-append-support-info
-// @version      2.0
+// @version      2.1
 // @description  Append support information to cppreference pages
 // @author       cpp_learner
 // @match        https://en.cppreference.com/w/*
@@ -35,10 +35,14 @@ function get_revision_marker_in_page() {
 function guess_relevant_revs(lang, revs) {
     const markers_class_sets = get_revision_marker_in_page();
 
-    var since = revs.length, until = 0;
+    if (markers_class_sets.length === 0) {
+        return revs;
+    }
+
+    let since = revs.length, until = 0;
     for (const class_set of markers_class_sets) {
-        var has_since = false;
-        var has_until = false;
+        let has_since = false;
+        let has_until = false;
         for (const [i, rev] of revs.entries()) {
             if (class_set.has(`t-since-${lang}${rev}`)) {
                 has_since = true;
@@ -52,6 +56,7 @@ function guess_relevant_revs(lang, revs) {
         since = has_since ? since : 0;
         until = has_until ? until : revs.length;
     }
+
     return revs.slice(since, until + 1);
 }
 
