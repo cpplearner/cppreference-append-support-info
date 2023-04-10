@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Cppreference-append-support-info
-// @version      1.1
+// @version      2.0
 // @description  Append support information to cppreference pages
 // @author       cpp_learner
 // @match        https://en.cppreference.com/w/*
@@ -55,7 +55,71 @@ function guess_relevant_revs(lang, revs) {
     return revs.slice(since, until + 1);
 }
 
-function is_relevant_row(row) {
+function convert_table_to_array(table) {
+    const result = [];
+    let row_index = 0;
+    for (const row of table.rows) {
+        if (!result[row_index]) {
+            result[row_index] = [];
+        }
+        let cell_index = 0;
+        for (const cell of row.cells) {
+            while (result[row_index][cell_index]) {
+                ++cell_index;
+            }
+            for (let i = 0; i < cell.rowSpan; ++i) {
+                if (!result[row_index + i]) {
+                    result[row_index + i] = [];
+                }
+                result[row_index + i][cell_index] = cell;
+            }
+        }
+        ++row_index;
+    }
+    return result;
+}
+
+function process_feature_test_macro_table(table) {
+    const arr = convert_table_to_array(table).slice(1);
+    if (table.matches('.ftm-has-value')) {
+        return arr.map(row => ({name: row[0].textContent.trim(), value: row[1].textContent.trim()}));
+    } else {
+        return arr.map(row => ({name: row[0].textContent.trim(), value: undefined}));
+    }
+}
+
+function get_paper_numbers_in_row(row) {
+    return Array.from(row.at(-1).querySelectorAll('.external')).map(link => link.text);
+}
+
+async function guess_relevant_papers_from_feature_test_macros() {
+    const ftm_tables = Array.from(document.querySelectorAll('.ftm-begin'));
+    const macros = ftm_tables.flatMap(table => process_feature_test_macro_table(table));
+
+    if (macros.length === 0) {
+        return [];
+    }
+
+    const ftm_page = await fetch_pages(['cpp/feature test']);
+    const ftm_page_content = new DOMParser().parseFromString(ftm_page[0].revisions[0]['*'], 'text/html');
+    const data_tables = Array.from(ftm_page_content.querySelectorAll('.wikitable'));
+    const data_rows = data_tables.flatMap(table => convert_table_to_array(table).slice(1, -1));
+
+    const relevant_rows = [];
+    for (const row of data_rows) {
+        const name = row[0].textContent.trim();
+        const value = row[2].textContent.trim();
+        for (const macro of macros) {
+            if (macro.name === name && (!macro.value || macro.value === value)) {
+                relevant_rows.push(row);
+            }
+        }
+    }
+
+    return relevant_rows.flatMap(row => get_paper_numbers_in_row(row));
+}
+
+function is_relevant_row(row, relevant_papers) {
     const links = Array.from(row.querySelectorAll('a'));
     if (links.some(a => `${document.URL}/`.startsWith(`${a.href}/`))) {
         return true;
@@ -64,17 +128,28 @@ function is_relevant_row(row) {
     if (header && links.some(a => a.href === header.href)) {
         return true;
     }
+    const papers = Array.from(row.querySelectorAll('.external'));
+    if (papers.some(paper => relevant_papers.includes(paper.text))) {
+        return true;
+    }
     return false;
 }
 
-function get_relevant_rows(content, selector) {
+function get_relevant_rows(content, selector, papers) {
     const table = content.querySelector(selector);
     if (!table) {
         return {body: []};
     }
     const rows = Array.from(table.querySelectorAll('tr'));
-    const relevant_rows = rows.slice(1, -1).filter(is_relevant_row);
+    const relevant_rows = rows.slice(1, -1).filter(row => is_relevant_row(row, papers));
     return {head: rows[0], body: relevant_rows};
+}
+
+function get_relevant_data(content, papers) {
+    return {
+        compiler_support: get_relevant_rows(content, '.t-compiler-support-top', papers),
+        library_support: get_relevant_rows(content, '.t-standard-library-support-top', papers),
+    };
 }
 
 function are_matching_cells(cell1, cell2) {
@@ -133,25 +208,34 @@ function create_support_table(data) {
 async function append_support_table(is_cxx, revs) {
     const get_pagename = rev => `Template:${is_cxx ? 'cpp' : 'c'}/compiler support/${rev}`;
 
-    const pages = await fetch_pages(revs.map(get_pagename));
+    const fetch_data_promise = fetch_pages(revs.map(get_pagename));
+    const guess_papers_promise = guess_relevant_papers_from_feature_test_macros();
 
-    const compiler_support = {body: []};
-    const library_support = {body: []};
+    const [pages, relevant_papers] = await Promise.all([fetch_data_promise, guess_papers_promise]);
 
     const relevant_revs = guess_relevant_revs(is_cxx ? 'cxx' : 'c', revs);
     const relevant_pagenames = relevant_revs.map(get_pagename);
 
-    const relevant_pages = pages.filter(page => relevant_pagenames.includes(page.title));
+    const relevant_support_pages = pages.filter(page => relevant_pagenames.includes(page.title));
 
-    for (const page of relevant_pages) {
+    const compiler_support = {body: []};
+    const library_support = {body: []};
+
+    for (const page of relevant_support_pages) {
         const content = new DOMParser().parseFromString(page.revisions[0]['*'], 'text/html');
-        merge_support_data(compiler_support, get_relevant_rows(content, '.t-compiler-support-top'));
-        merge_support_data(library_support, get_relevant_rows(content, '.t-standard-library-support-top'));
+        const data = get_relevant_data(content, relevant_papers);
+        merge_support_data(compiler_support, data.compiler_support);
+        merge_support_data(library_support, data.library_support);
     }
 
     const current_page_content = document.querySelector('#mw-content-text');
-    current_page_content.append(create_support_table(compiler_support));
-    current_page_content.append(create_support_table(library_support));
+    if (compiler_support.body.length !== 0 || library_support.body.length !== 0) {
+        const headline = document.createElement('h3');
+        headline.textContent = 'Support status';
+        current_page_content.append(headline);
+        current_page_content.append(create_support_table(compiler_support));
+        current_page_content.append(create_support_table(library_support));
+    }
 }
 
 const is_cxx = !document.URL.match(/\bc\//);
