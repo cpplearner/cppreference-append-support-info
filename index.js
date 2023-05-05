@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Cppreference-append-support-info
-// @version      2.2
+// @version      2.3
 // @description  Append support information to cppreference pages
 // @author       cpp_learner
 // @match        https://en.cppreference.com/w/*
@@ -103,8 +103,8 @@ function process_feature_test_macro_table(table) {
     }
 }
 
-function get_paper_numbers_in_row(row) {
-    return Array.from(row.at(-1).querySelectorAll('.external')).map(link => link.text);
+function get_paper_numbers(elem) {
+    return Array.from(elem.querySelectorAll('.external')).map(link => link.text.replace(/R\d*/iu, ''));
 }
 
 async function guess_relevant_papers_from_feature_test_macros() {
@@ -131,7 +131,7 @@ async function guess_relevant_papers_from_feature_test_macros() {
         }
     }
 
-    return relevant_rows.flatMap(row => get_paper_numbers_in_row(row));
+    return relevant_rows.flatMap(row => get_paper_numbers(row.at(-1)));
 }
 
 function is_relevant_row(row, relevant_papers) {
@@ -143,8 +143,8 @@ function is_relevant_row(row, relevant_papers) {
     if (header && links.some(a => a.href === header.href)) {
         return true;
     }
-    const papers = Array.from(row.querySelectorAll('.external'));
-    if (papers.some(paper => relevant_papers.includes(paper.text))) {
+    const papers = get_paper_numbers(row);
+    if (papers.some(paper => relevant_papers.includes(paper))) {
         return true;
     }
     return false;
