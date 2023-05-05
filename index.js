@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Cppreference-append-support-info
-// @version      2.1
+// @version      2.2
 // @description  Append support information to cppreference pages
 // @author       cpp_learner
 // @match        https://en.cppreference.com/w/*
@@ -9,6 +9,16 @@
 // ==/UserScript==
 
 (function() {
+const HEADLINE_TEXT = 'Support status';
+const NOTE_TEMPLATE =
+    '<small>The support data are automatically generated from $0. Some rows might be inapplicable to this page.</small>';
+const CXX_SUPPORT_LINK = '<a href="/w/cpp/compiler_support" title="cpp/compiler support">C++ compiler support</a>';
+const C_SUPPORT_LINK = '<a href="/w/c/compiler_support" title="c/compiler support">C compiler support</a>';
+const MISSING_CELL =
+    '<td style="background:#ececec;color:grey;vertical-align:middle;text-align:center;" class="table-na">' +
+    '<small>N/A</small></td>';
+const TABLE_HEAD_TEXT = 'Feature\n\xA0';
+
 async function fetch_pages(pagenames) {
     const params = new URLSearchParams({
         format: 'json',
@@ -171,11 +181,7 @@ function fixup_missing_columns(dst_data, src_data) {
             dst_data.head.insertBefore(src_cell.cloneNode(true), dst_head_cells[i]);
             for (const row of dst_data.body) {
                 const cell = row.insertCell(i);
-                cell.classList.add('table-na');
-                cell.style = 'background: #ececec; color: grey; vertical-align: middle; text-align: center;';
-                const element = document.createElement('small');
-                element.textContent = 'N/A';
-                cell.append(element);
+                cell.outerHTML = MISSING_CELL;
             }
         }
     }
@@ -194,23 +200,24 @@ function merge_support_data(old_data, new_data) {
     }
 }
 
-function create_support_table(data) {
-    const table = document.createElement('table');
-    table.classList.add('wikitable', 'support-info-table');
-    table.style.fontSize = '0.8em';
-
-    const tbody = table.createTBody();
+function append_support_table(current_page_content, data, kind) {
     if (data.body.length !== 0) {
+        const table = document.createElement('table');
+        table.classList.add('wikitable', 'support-data-begin', `${kind}-support-data-begin`);
+        table.style.fontSize = '0.8em';
+
+        const tbody = table.createTBody();
         const head = data.head;
-        head.cells[0].innerText = 'Feature\n\xA0';
+        head.cells[0].innerText = TABLE_HEAD_TEXT;
         head.lastElementChild.remove();
         tbody.append(head);
         tbody.append(...data.body);
+
+        current_page_content.append(table);
     }
-    return table;
 }
 
-async function append_support_table(is_cxx, revs) {
+async function append_support_info(is_cxx, revs) {
     const get_pagename = rev => `Template:${is_cxx ? 'cpp' : 'c'}/compiler support/${rev}`;
 
     const fetch_data_promise = fetch_pages(revs.map(get_pagename));
@@ -236,14 +243,19 @@ async function append_support_table(is_cxx, revs) {
     const current_page_content = document.querySelector('#mw-content-text');
     if (compiler_support.body.length !== 0 || library_support.body.length !== 0) {
         const headline = document.createElement('h3');
-        headline.textContent = 'Support status';
+        headline.textContent = HEADLINE_TEXT;
+        const note = document.createElement('p');
+        note.innerHTML = NOTE_TEMPLATE.replace('$0', is_cxx ? CXX_SUPPORT_LINK : C_SUPPORT_LINK);
+
         current_page_content.append(headline);
-        current_page_content.append(create_support_table(compiler_support));
-        current_page_content.append(create_support_table(library_support));
+        current_page_content.append(note);
+
+        append_support_table(current_page_content, compiler_support, 'core');
+        append_support_table(current_page_content, library_support, 'lib');
     }
 }
 
 const is_cxx = !document.URL.match(/\bc\//);
 const revs = is_cxx ? ['11', '14', '17', '20', '23', '26'] : ['99', '23'];
-append_support_table(is_cxx, revs);
+append_support_info(is_cxx, revs);
 })();
