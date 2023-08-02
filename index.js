@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Cppreference-append-support-info
-// @version      2.3
+// @version      3.0
 // @description  Append support information to cppreference pages
 // @author       cpp_learner
 // @match        https://en.cppreference.com/w/*
@@ -134,6 +134,16 @@ async function guess_relevant_papers_from_feature_test_macros() {
     return relevant_rows.flatMap(row => get_paper_numbers(row.at(-1)));
 }
 
+function guess_relevant_papers_from_dr_list() {
+    const dr_lists = Array.from(document.querySelectorAll('.dsctable'));
+    return dr_lists.flatMap(dr_list => get_paper_numbers(dr_list));
+}
+
+async function guess_relevant_papers() {
+    const result = await guess_relevant_papers_from_feature_test_macros();
+    return result.concat(guess_relevant_papers_from_dr_list());
+}
+
 function is_relevant_row(row, relevant_papers) {
     const links = Array.from(row.querySelectorAll('a'));
     if (links.some(a => `${document.URL}/`.startsWith(`${a.href}/`))) {
@@ -221,7 +231,7 @@ async function append_support_info(is_cxx, revs) {
     const get_pagename = rev => `Template:${is_cxx ? 'cpp' : 'c'}/compiler support/${rev}`;
 
     const fetch_data_promise = fetch_pages(revs.map(get_pagename));
-    const guess_papers_promise = guess_relevant_papers_from_feature_test_macros();
+    const guess_papers_promise = guess_relevant_papers();
 
     const [pages, relevant_papers] = await Promise.all([fetch_data_promise, guess_papers_promise]);
 
